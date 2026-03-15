@@ -35,7 +35,7 @@ CONFIG = {
     # ── Schedule ───────────────────────────────────────────────────────────────
     # mode: "once" | "daily" | "weekly" | "interval"
     "schedule": {
-        "mode": "daily",
+        "mode": "once",
         "at":   "08:00",     # for daily / weekly
         "day":  "monday",    # for weekly only
         "hours": 6           # for interval only
