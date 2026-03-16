@@ -3,3 +3,4 @@ gunicorn>=21.2.0
 pandas>=2.0
 matplotlib>=3.7
 openpyxl>=3.1
+
