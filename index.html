@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
@@ -290,9 +290,28 @@ Jun,North,Clothing,36700,23900,696
 Jun,South,Electronics,61200,41600,430
 Jun,East,Food,26800,17400,1220`;
 
+function checkLibsLoaded() {
+  const missing = [];
+  if (typeof Papa === 'undefined') missing.push('PapaParse');
+  if (typeof XLSX === 'undefined') missing.push('SheetJS');
+  if (typeof Chart === 'undefined') missing.push('Chart.js');
+  if (typeof window.jspdf === 'undefined') missing.push('jsPDF');
+  return missing;
+}
+
 document.getElementById('generate-btn').addEventListener('click', () => {
   const text = document.getElementById('csv-input').value.trim();
   if (!text) return;
+  const missing = checkLibsLoaded();
+  if (missing.length) {
+    alert(
+      (currentLang === 'es'
+        ? 'No se pudieron cargar estas librerías (revisa tu conexión o bloqueador de anuncios): '
+        : 'These libraries failed to load (check your connection or ad blocker): ')
+      + missing.join(', ')
+    );
+    return;
+  }
   parseCSVText(text, I18N[currentLang].src_pasted);
 });
 document.getElementById('sample-btn').addEventListener('click', () => {
