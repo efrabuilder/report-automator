@@ -122,6 +122,22 @@ def build_excel(df):
     return buf
 
 
+import numpy as np
+
+def to_native(obj):
+    if isinstance(obj, dict):
+        return {k: to_native(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_native(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -173,13 +189,13 @@ def analyze():
         except Exception as e:
             charts.append({"title": cfg.get("title","Chart"), "error": str(e)})
 
-    return jsonify({
+    return jsonify(to_native({
         "rows":    len(df),
         "columns": list(df.columns),
         "stats":   stats,
         "charts":  charts,
         "preview": df.head(10).to_dict(orient="records"),
-    })
+    }))
 
 
 @app.route("/api/export", methods=["POST"])
