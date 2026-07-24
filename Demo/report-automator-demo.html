@@ -112,8 +112,10 @@ Month,Region,Revenue,Expenses
 Jan,North,45200,31000
 Jan,South,28400,18500
 Feb,North,51200,34200"></textarea>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none;">
     <div class="actions-row">
       <button class="btn btn-primary" id="generate-btn" data-i18n="btn_generate">⚡ Generate Report</button>
+      <button class="btn btn-outline" id="upload-btn" data-i18n="btn_upload">📁 Upload File</button>
       <button class="btn btn-outline" id="sample-btn" data-i18n="btn_sample">Load Sample Data</button>
       <button class="btn btn-outline" id="clear-btn" data-i18n="btn_clear">Clear</button>
     </div>
@@ -183,8 +185,10 @@ const I18N = {
     input_title: "CSV Data Input",
     input_placeholder: "Paste your CSV data here...\nExample:\nMonth,Region,Revenue,Expenses\nJan,North,45200,31000\nJan,South,28400,18500\nFeb,North,51200,34200",
     btn_generate: "⚡ Generate Report",
+    btn_upload: "📁 Upload File",
     btn_sample: "Load Sample Data",
     btn_clear: "Clear",
+    alert_bad_file: "Could not read that file. Please upload a .csv, .xlsx or .xls file.",
     placeholder_msg: "Paste CSV data and click Generate Report to see results.",
     summary_title: "Summary",
     config_title: "Configure charts",
@@ -212,8 +216,10 @@ const I18N = {
     input_title: "Entrada de datos CSV",
     input_placeholder: "Pega tus datos CSV aquí...\nEjemplo:\nMonth,Region,Revenue,Expenses\nJan,North,45200,31000\nJan,South,28400,18500\nFeb,North,51200,34200",
     btn_generate: "⚡ Generar reporte",
+    btn_upload: "📁 Subir archivo",
     btn_sample: "Cargar datos de ejemplo",
     btn_clear: "Limpiar",
+    alert_bad_file: "No se pudo leer ese archivo. Sube un archivo .csv, .xlsx o .xls.",
     placeholder_msg: "Pega datos CSV y haz clic en Generar reporte para ver resultados.",
     summary_title: "Resumen",
     config_title: "Configurar gráficos",
@@ -298,6 +304,45 @@ function checkLibsLoaded() {
   if (typeof window.jspdf === 'undefined') missing.push('jsPDF');
   return missing;
 }
+
+document.getElementById('upload-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith('.csv')) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      document.getElementById('csv-input').value = text;
+      parseCSVText(text, file.name);
+    };
+    reader.onerror = () => alert(I18N[currentLang].alert_bad_file);
+    reader.readAsText(file);
+  } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const csvText = XLSX.utils.sheet_to_csv(sheet);
+        document.getElementById('csv-input').value = csvText;
+        parseCSVText(csvText, file.name);
+      } catch (err) {
+        alert(I18N[currentLang].alert_bad_file);
+      }
+    };
+    reader.onerror = () => alert(I18N[currentLang].alert_bad_file);
+    reader.readAsArrayBuffer(file);
+  } else {
+    alert(I18N[currentLang].alert_bad_file);
+  }
+  e.target.value = ''; // allow re-uploading the same file name later
+});
 
 document.getElementById('generate-btn').addEventListener('click', () => {
   const text = document.getElementById('csv-input').value.trim();
