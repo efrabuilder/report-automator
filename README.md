@@ -1,116 +1,36 @@
-# 📊 Report Automator
+# Inventory Automator - Manejo de Datos (EDA)
 
-Automated report generator that reads CSV/Excel data, produces styled Excel + PDF reports with charts, and sends them via email on a configurable schedule.
+## Estructura
 
-Built by **Efraín Rojas Artavia**
+- `core/analisis.py` -> logica compartida: carga, validaciones, limpieza, analisis, graficos.
+- `main_consola.py` -> interfaz de menu por consola.
+- `main_tkinter.py` -> interfaz grafica de escritorio (Tkinter).
+- `app_streamlit.py` -> interfaz web (Streamlit).
+- `ventas_tienda_tecnologia_ampliado.csv` -> dataset proporcionado por el docente.
 
----
+## Como ejecutar cada interfaz
 
-## Features
-
-- ✅ Reads any **CSV or Excel** file
-- ✅ Generates **bar, line and pie charts** automatically
-- ✅ Exports a styled **Excel report** (Summary + Data + Charts sheets)
-- ✅ Exports a styled **PDF report** with charts embedded
-- ✅ Sends both files via **email** (Gmail / SMTP)
-- ✅ Runs on a **schedule** — once, daily, weekly, or every N hours
-
----
-
-## Project Structure
+### Consola
 
 ```
-report-automator/
-├── report_automator.py   # Main script
-├── config.py             # All settings (edit this)
-├── requirements.txt      # Dependencies
-├── data/
-│   └── sample_data.csv   # Example input data
-└── output/               # Generated reports (auto-created)
-    └── charts/           # Chart images (auto-created)
+python main_consola.py
 ```
 
----
+### Tkinter (requiere entorno grafico / escritorio)
 
-## Quick Start
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/efrabuilder/report-automator.git
-cd report-automator
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Add your data file to data/
-# (or use the included sample_data.csv)
-
-# 4. Edit config.py to match your columns and preferences
-
-# 5. Run
-python report_automator.py
+```
+python main_tkinter.py
 ```
 
-Reports will appear in the `output/` folder.
+### Streamlit (abre en el navegador)
 
----
-
-## Configuration
-
-All settings live in `config.py`:
-
-### Data source
-```python
-"data_source": "data/your_file.csv",  # CSV or Excel
-"report_name": "My Report",
+```
+pip install streamlit
+streamlit run app_streamlit.py
 ```
 
-### Charts
-```python
-"charts": [
-    { "type": "bar",  "title": "Revenue by Region", "x": "Region", "y": "Revenue" },
-    { "type": "line", "title": "Monthly Trend", "x": "Month", "y_cols": ["Revenue", "Expenses"] },
-    { "type": "pie",  "title": "Distribution",  "label": "Category", "value": "Revenue" },
-]
+## Dependencias
+
 ```
-
-### Schedule
-```python
-"schedule": {
-    "mode": "daily",   # "once" | "daily" | "weekly" | "interval"
-    "at":   "08:00",   # time for daily/weekly
-    "day":  "monday",  # for weekly
-    "hours": 6         # for interval
-}
+pip install pandas matplotlib streamlit
 ```
-
-### Email
-```python
-"email": {
-    "enabled":    True,
-    "sender":     "you@gmail.com",
-    "password":   "your_app_password",  # Gmail App Password
-    "recipients": ["recipient@email.com"],
-}
-```
-
-> **Gmail tip:** Use an [App Password](https://myaccount.google.com/apppasswords) instead of your real password.
-
----
-
-## Tech Stack
-
-| Tool | Purpose |
-|------|---------|
-| `pandas` | Data loading & statistics |
-| `matplotlib` | Chart generation |
-| `openpyxl` | Excel report creation |
-| `fpdf2` | PDF report generation |
-| `schedule` | Job scheduling |
-| `smtplib` | Email delivery |
-
----
-
-## License
-
-MIT — free to use and modify.

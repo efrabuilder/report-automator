@@ -1,0 +1,50 @@
+GUIA DE INSTALACION Y EJECUCION - PROYECTO EDA
+
+
+1. Requisitos
+
+Tener Python instalado (ya lo tenes, según la terminal es Python 3.14).
+
+
+2. Instalar las librerías necesarias (una sola vez)
+
+Abrí una terminal dentro de la carpeta "proyecto_eda" y corré:
+
+pip install pandas matplotlib streamlit
+
+Dejala terminar sin cerrar la terminal ni cancelar con Ctrl+C. Al final tiene que aparecer una línea tipo "Successfully installed ... streamlit-1.62.0 ...".
+
+
+3. Ejecutar cada interfaz
+
+Las tres se corren desde la misma carpeta "proyecto_eda", en una terminal (por ejemplo la de VS Code).
+
+Consola (menú de texto):
+python main_consola.py
+
+Tkinter (ventana de escritorio):
+python main_tkinter.py
+
+Streamlit (página web local):
+streamlit run app_streamlit.py
+
+Esto abre el navegador solo. Si no se abre, copiá la URL que aparece en la terminal (algo como http://localhost:8501) y pegala en el navegador. Para cerrarla, volvé a la terminal y presioná Ctrl+C.
+
+
+4. Si "streamlit run" da error de comando no reconocido
+
+Qué pasa: cuando pip instala streamlit, también instala un programa llamado "streamlit.exe" que es el que te deja escribir "streamlit run ..." directo en la terminal. Ese programa queda guardado en una carpeta especial de Python (Scripts), pero Windows no siempre sabe que tiene que buscar ahí, porque esa carpeta no está en el PATH (la lista de lugares donde Windows busca comandos). Por eso, aunque streamlit sí está instalado, Windows no encuentra el comando "streamlit" cuando lo escribís solo.
+
+La solución, sin tocar nada de la configuración de Windows: en vez de llamar a "streamlit" directo, le pedís a Python que lo ejecute él mismo con la opción -m. Python sabe perfectamente dónde quedó instalado streamlit, así que esto funciona siempre:
+
+python -m streamlit run app_streamlit.py
+
+Usá ese comando en lugar de "streamlit run app_streamlit.py" cada vez que necesites levantar la interfaz web.
+
+
+5. Resumen rápido
+
+pip install pandas matplotlib streamlit       (una sola vez)
+python main_consola.py                        menú en consola
+python main_tkinter.py                        ventana de escritorio
+python -m streamlit run app_streamlit.py      página web local
