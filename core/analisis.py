@@ -204,6 +204,14 @@ def normalizar_categoria_texto(estado, columna, mapa_valores=None):
     if columna not in df.columns:
         raise ValueError(f"La columna '{columna}' no existe.")
 
+    # BUGFIX: con el dtype "str" que pandas usa por defecto desde 2.x/3.x,
+    # astype(str) ya NO convierte los nulos en el texto "nan": los deja
+    # como NaN real. Antes se asumia que se volvian texto, por eso mas
+    # abajo sorted(serie.unique()) truena con "'<' not supported between
+    # instances of 'float' and 'str'" apenas la columna tiene un nulo.
+    # Se guarda la mascara de nulos ANTES de tocar nada, y se restauran
+    # como nulos reales al final (no se inventa una categoria "Nan").
+    es_nulo = df[columna].isna()
     serie = df[columna].astype(str).str.strip()
 
     if mapa_valores:
@@ -215,8 +223,10 @@ def normalizar_categoria_texto(estado, columna, mapa_valores=None):
     else:
         serie = serie.str.title()
 
+    serie = serie.mask(es_nulo, other=pd.NA)
+
     df[columna] = serie
-    return f"Columna '{columna}' normalizada. Valores unicos ahora: {sorted(serie.unique())}"
+    return f"Columna '{columna}' normalizada. Valores unicos ahora: {sorted(serie.dropna().unique())}"
 
 
 # 7. Estadisticas descriptivas
