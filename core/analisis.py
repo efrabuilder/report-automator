@@ -14,9 +14,43 @@
 
 import os
 import pandas as pd
+import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # se cambia a un backend interactivo desde main_tkinter si aplica
 import matplotlib.pyplot as plt
+from matplotlib.patches import FancyBboxPatch
+from matplotlib.colors import LinearSegmentedColormap
+
+# Paleta e identidad visual propia del proyecto (evita el estilo por
+# defecto de matplotlib). Un solo lugar para tocar colores/tipografia
+# si se quiere ajustar el "look" en el futuro.
+PALETA = ["#2E4057", "#F2A541", "#4C9A8C", "#C1445A", "#7A6FA0", "#7FB069"]
+COLOR_FONDO = "#FBFAF7"
+COLOR_TEXTO = "#2B2B2B"
+COLOR_GRILLA = "#D9D5CC"
+
+CMAP_BARRAS = LinearSegmentedColormap.from_list("automator_barras", ["#F2A541", "#2E4057"])
+
+
+def _aplicar_estilo_base(fig, ax, titulo):
+    # Aplica la identidad visual comun a todos los graficos: fondo tipo
+    # "papel", grilla suave solo horizontal, sin bordes superiores/derechos
+    # y tipografia consistente. Se centraliza aca para que los 5 tipos de
+    # grafico luzcan como parte del mismo proyecto y no como plots sueltos.
+    fig.patch.set_facecolor(COLOR_FONDO)
+    ax.set_facecolor(COLOR_FONDO)
+    ax.set_title(titulo, fontsize=13, fontweight="bold", color=COLOR_TEXTO, pad=14)
+    ax.tick_params(colors=COLOR_TEXTO, labelsize=9)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color(COLOR_GRILLA)
+    ax.grid(axis="y", color=COLOR_GRILLA, linewidth=0.8, alpha=0.7, zorder=0)
+    ax.set_axisbelow(True)
+    for label in ax.get_xticklabels():
+        label.set_color(COLOR_TEXTO)
+    for label in ax.get_yticklabels():
+        label.set_color(COLOR_TEXTO)
 
 
 def nuevo_estado():
@@ -410,20 +444,90 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
     if requisito_y == "ninguna" and columna_y:
         columna_y = None  # se ignora silenciosamente, no es un error
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    titulo = f"{tipo.capitalize()}: {columna_x}" + (f" vs {columna_y}" if columna_y else "")
 
     if tipo == "barras":
         datos = df.groupby(columna_x)[columna_y].sum().sort_values(ascending=False) if columna_y else df[columna_x].value_counts()
-        datos.plot(kind="bar", ax=ax, color="#4C72B0")
+        # Cada barra toma un tono distinto de un degradado propio (en vez
+        # del azul unico por defecto), y se etiqueta con su valor encima
+        # para que el grafico se lea sin tener que mirar el eje Y.
+        colores = CMAP_BARRAS(np.linspace(0.15, 0.9, len(datos)))
+        barras = ax.bar(
+            range(len(datos)), datos.values, color=colores,
+            edgecolor=COLOR_FONDO, linewidth=1.2, zorder=3, width=0.65,
+        )
+        ax.set_xticks(range(len(datos)))
+        ax.set_xticklabels(datos.index, rotation=30, ha="right")
+        for barra, valor in zip(barras, datos.values):
+            ax.annotate(
+                f"{valor:,.0f}", (barra.get_x() + barra.get_width() / 2, valor),
+                textcoords="offset points", xytext=(0, 4), ha="center",
+                fontsize=8.5, color=COLOR_TEXTO, fontweight="bold",
+            )
         ax.set_ylabel(columna_y or "conteo")
+        ax.margins(y=0.15)
     elif tipo == "linea":
         datos = df.groupby(columna_x)[columna_y].sum() if columna_y else df[columna_x].value_counts().sort_index()
-        datos.plot(kind="line", ax=ax, marker="o", color="#55A868")
+        # Linea con relleno degradado bajo la curva (en vez de una linea
+        # simple) para dar sensacion de volumen/tendencia, con marcadores
+        # resaltados en los puntos maximo y minimo.
+        x_pos = range(len(datos))
+        ax.plot(x_pos, datos.values, color=PALETA[0], linewidth=2.4, marker="o",
+                markersize=5, markerfacecolor=PALETA[1], markeredgecolor=PALETA[0],
+                zorder=3)
+        ax.fill_between(x_pos, datos.values, color=PALETA[0], alpha=0.12, zorder=2)
+        idx_max = int(np.argmax(datos.values))
+        idx_min = int(np.argmin(datos.values))
+        for idx, etiqueta in ((idx_max, "max"), (idx_min, "min")):
+            ax.annotate(
+                f"{etiqueta}: {datos.values[idx]:,.0f}", (idx, datos.values[idx]),
+                textcoords="offset points", xytext=(0, 10 if etiqueta == "max" else -16),
+                ha="center", fontsize=8, color=PALETA[3], fontweight="bold",
+            )
+        ax.set_xticks(list(x_pos))
+        ax.set_xticklabels(datos.index, rotation=30, ha="right")
         ax.set_ylabel(columna_y or "conteo")
     elif tipo == "histograma":
-        df[columna_x].plot(kind="hist", bins=20, ax=ax, color="#C44E52")
+        valores = df[columna_x].dropna()
+        n, bins, parches = ax.hist(
+            valores, bins=20, color=PALETA[2], edgecolor=COLOR_FONDO,
+            linewidth=1.0, zorder=3,
+        )
+        # Linea de densidad suavizada superpuesta (aproximacion simple con
+        # un promedio movil sobre los conteos) para leer la forma de la
+        # distribucion ademas de las barras crudas.
+        centros = (bins[:-1] + bins[1:]) / 2
+        if len(n) >= 3:
+            suavizado = np.convolve(n, np.ones(3) / 3, mode="same")
+            ax.plot(centros, suavizado, color=PALETA[3], linewidth=2.0, zorder=4)
+        media = valores.mean()
+        ax.axvline(media, color=PALETA[0], linestyle="--", linewidth=1.5, zorder=4)
+        ax.annotate(
+            f"promedio: {media:,.2f}", (media, max(n) if len(n) else 0),
+            textcoords="offset points", xytext=(6, 0), color=PALETA[0],
+            fontsize=8.5, fontweight="bold",
+        )
+        ax.set_xlabel(columna_x)
+        ax.set_ylabel("frecuencia")
     elif tipo == "dispersion":
-        ax.scatter(df[columna_x], df[columna_y], alpha=0.5, color="#8172B2")
+        x_vals = df[columna_x]
+        y_vals = df[columna_y]
+        # Color de cada punto segun un tercer eje implicito (la posicion
+        # en el eje Y) en vez de un color plano, mas una linea de
+        # tendencia lineal simple para mostrar la relacion entre variables.
+        sc = ax.scatter(
+            x_vals, y_vals, c=y_vals, cmap=CMAP_BARRAS, alpha=0.75,
+            s=45, edgecolor=COLOR_FONDO, linewidth=0.6, zorder=3,
+        )
+        if len(x_vals.dropna()) >= 2 and x_vals.nunique() > 1:
+            pendiente, intercepto = np.polyfit(x_vals, y_vals, 1)
+            x_linea = np.linspace(x_vals.min(), x_vals.max(), 100)
+            ax.plot(x_linea, pendiente * x_linea + intercepto, color=PALETA[3],
+                    linewidth=2.0, linestyle="--", zorder=4)
+        cbar = fig.colorbar(sc, ax=ax, pad=0.02)
+        cbar.ax.tick_params(colors=COLOR_TEXTO, labelsize=8)
+        cbar.outline.set_visible(False)
         ax.set_xlabel(columna_x)
         ax.set_ylabel(columna_y)
     elif tipo == "pastel":
@@ -433,9 +537,29 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
                 f"'{columna_x}' tiene {len(datos)} categorias distintas, "
                 "demasiadas para un grafico de pastel legible. Proba con 'barras'."
             )
-        ax.pie(datos.values, labels=datos.index, autopct="%1.1f%%")
+        # Dona en vez de pastel solido (mas moderno) con la categoria
+        # dominante ligeramente separada del resto para destacarla.
+        colores = [PALETA[i % len(PALETA)] for i in range(len(datos))]
+        explode = [0.06 if v == datos.max() else 0 for v in datos.values]
+        wedges, _, autotextos = ax.pie(
+            datos.values, colors=colores, autopct="%1.1f%%", pctdistance=0.8,
+            explode=explode, startangle=90,
+            wedgeprops={"width": 0.42, "edgecolor": COLOR_FONDO, "linewidth": 2},
+            textprops={"color": COLOR_FONDO, "fontsize": 8.5, "fontweight": "bold"},
+        )
+        ax.legend(
+            wedges, datos.index, loc="center left", bbox_to_anchor=(1.02, 0.5),
+            fontsize=8.5, frameon=False, labelcolor=COLOR_TEXTO,
+        )
+        ax.axis("equal")
 
-    ax.set_title(f"{tipo.capitalize()}: {columna_x}" + (f" vs {columna_y}" if columna_y else ""))
+    if tipo != "pastel":
+        _aplicar_estilo_base(fig, ax, titulo)
+    else:
+        fig.patch.set_facecolor(COLOR_FONDO)
+        ax.set_facecolor(COLOR_FONDO)
+        ax.set_title(titulo, fontsize=13, fontweight="bold", color=COLOR_TEXTO, pad=14)
+
     fig.tight_layout()
 
     if ruta_salida:
