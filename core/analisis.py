@@ -490,8 +490,25 @@ def columnas_validas_para(estado, tipo, eje):
     return list(estado["df"].columns)  # 'cualquiera'
 
 
+def _formato_compacto(valor):
+    # Abrevia numeros grandes (82780554 -> "82.8M") para que las etiquetas
+    # sobre cada barra ocupen mucho menos ancho horizontal. Antes se usaba
+    # el numero completo con separador de miles, que con datasets grandes
+    # (montos en colones, por ejemplo) genera textos larguisimos que se
+    # solapan entre si aunque las barras esten separadas.
+    signo = "-" if valor < 0 else ""
+    valor_abs = abs(valor)
+    if valor_abs >= 1_000_000_000:
+        return f"{signo}{valor_abs / 1_000_000_000:,.1f}B"
+    if valor_abs >= 1_000_000:
+        return f"{signo}{valor_abs / 1_000_000:,.1f}M"
+    if valor_abs >= 1_000:
+        return f"{signo}{valor_abs / 1_000:,.1f}K"
+    return f"{signo}{valor_abs:,.0f}"
+
+
 def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
-    # tipo: 'barras', 'linea', 'histograma', 'dispersion', 'pastel'
+    # tipo: 'barras', 'linea', 'histograma', 'dispersion', 'pastel', 'caja'
     # Devuelve la figura de matplotlib (para Tkinter/Streamlit) y opcionalmente
     # la guarda en disco (para el informe en Word).
     # Valida con mensajes claros ANTES de graficar, para nunca dejar pasar
@@ -530,7 +547,21 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
     if requisito_y == "ninguna" and columna_y:
         columna_y = None  # se ignora silenciosamente, no es un error
 
-    fig, ax = plt.subplots(figsize=(9, 5.6))
+    # Ancho de figura dinamico: con pocas categorias (4-5) 9 pulgadas se ve
+    # bien, pero con 15+ categorias esas mismas 9 pulgadas obligan a
+    # apretar las barras y los numeros de arriba terminan pisandose entre
+    # si. Se calcula el ancho segun cuantas categorias distintas hay en X
+    # (para los tipos que dibujan una barra/marca por categoria) y se deja
+    # un tope de 24" para que tampoco crezca sin limite con datasets con
+    # cientos de categorias (ahi ya es mejor filtrar los datos primero).
+    n_categorias = df[columna_x].nunique() if tipo in ("barras", "linea", "caja") else None
+    ancho_fig = 9 if not n_categorias else max(9, min(24, n_categorias * 0.9))
+    # Con muchas categorias tambien se achica un poco la letra de las
+    # cifras sobre cada barra, para que quepan sin solaparse incluso si
+    # el ancho tope (24") no alcanza a darle 0.9" a cada una.
+    fuente_etiquetas = 9 if not n_categorias or n_categorias <= 10 else (8 if n_categorias <= 18 else 7)
+
+    fig, ax = plt.subplots(figsize=(ancho_fig, 5.6))
     titulo = f"{tipo.capitalize()}: {columna_x}" + (f" vs {columna_y}" if columna_y else "")
 
     if tipo == "barras":
@@ -550,16 +581,16 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
         ax.set_xticks(posiciones)
         ax.set_xticklabels(datos.index, rotation=30, ha="right")
 
-        # Las cifras encima de cada barra llevan un contorno claro (efecto
-        # de "borde") para que nunca se confundan con el color de la
-        # barra que tienen debajo, y se deja mas margen arriba del grafico
-        # (margins) para que ninguna etiqueta quede cortada por el borde
-        # superior del panel.
+        # Las cifras encima de cada barra usan formato compacto (82.8M en
+        # vez de 82,780,554) y contorno claro, para que nunca se confundan
+        # con el color de la barra ni se solapen con la cifra vecina. Se
+        # deja mas margen arriba del grafico (margins) para que ninguna
+        # etiqueta quede cortada por el borde superior del panel.
         for barra, valor in zip(barras, datos.values):
             ax.annotate(
-                f"{valor:,.0f}", (barra.get_x() + barra.get_width() / 2, valor),
+                _formato_compacto(valor), (barra.get_x() + barra.get_width() / 2, valor),
                 textcoords="offset points", xytext=(0, 6), ha="center",
-                fontsize=9, color=COLOR_TEXTO, fontweight="bold",
+                fontsize=fuente_etiquetas, color=COLOR_TEXTO, fontweight="bold",
                 path_effects=_contorno_legible(),
             )
         ax.set_ylabel(columna_y or "conteo")
@@ -567,25 +598,58 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
         ax.set_xlim(posiciones[0] - 0.9, posiciones[-1] + 0.9)
     elif tipo == "linea":
         datos = df.groupby(columna_x)[columna_y].sum() if columna_y else df[columna_x].value_counts().sort_index()
+        n_puntos = len(datos)
+        x_pos = range(n_puntos)
+
+        # Con series largas (ej. una fecha por dia, cientos de puntos) dos
+        # cosas se rompian: un marcador circular en CADA punto saturaba la
+        # linea de bolitas encimadas, y una etiqueta de eje X por cada
+        # fecha se apretaba en una franja ilegible. A partir de 30 puntos
+        # se apaga el marcador de cada punto (la linea sola ya muestra la
+        # tendencia) y se muestran como maximo ~20 etiquetas de fecha
+        # repartidas parejo, no todas.
+        muchos_puntos = n_puntos > 30
+
         # Linea con relleno degradado bajo la curva (en vez de una linea
         # simple) para dar sensacion de volumen/tendencia, con marcadores
         # resaltados en los puntos maximo y minimo.
-        x_pos = range(len(datos))
-        ax.plot(x_pos, datos.values, color=PALETA[3], linewidth=2.6, marker="o",
-                markersize=6, markerfacecolor=PALETA[0], markeredgecolor=COLOR_FONDO,
-                markeredgewidth=1.2, zorder=3)
+        ax.plot(
+            x_pos, datos.values, color=PALETA[3],
+            linewidth=2.2 if muchos_puntos else 2.6,
+            marker=None if muchos_puntos else "o",
+            markersize=6, markerfacecolor=PALETA[0], markeredgecolor=COLOR_FONDO,
+            markeredgewidth=1.2, zorder=3,
+        )
         ax.fill_between(x_pos, datos.values, color=PALETA[3], alpha=0.15, zorder=2)
+
         idx_max = int(np.argmax(datos.values))
         idx_min = int(np.argmin(datos.values))
+        if muchos_puntos:
+            # Sin marcador general, el punto max/min se resalta aparte con
+            # un circulo propio para que siga siendo visible aunque el
+            # resto de la linea vaya "pelada".
+            for idx, color in ((idx_max, PALETA[1]), (idx_min, PALETA[4])):
+                ax.scatter([idx], [datos.values[idx]], color=color, s=55,
+                           edgecolor=COLOR_FONDO, linewidth=1.2, zorder=4)
         for idx, etiqueta, color in ((idx_max, "max", PALETA[1]), (idx_min, "min", PALETA[4])):
             ax.annotate(
-                f"{etiqueta}: {datos.values[idx]:,.0f}", (idx, datos.values[idx]),
+                f"{etiqueta}: {_formato_compacto(datos.values[idx])}", (idx, datos.values[idx]),
                 textcoords="offset points", xytext=(0, 14 if etiqueta == "max" else -18),
                 ha="center", fontsize=8.5, color=color, fontweight="bold",
                 path_effects=_contorno_legible(),
             )
-        ax.set_xticks(list(x_pos))
-        ax.set_xticklabels(datos.index, rotation=30, ha="right")
+
+        if muchos_puntos:
+            paso = max(1, n_puntos // 20)  # ~20 etiquetas repartidas, no las 100+ que haya
+            posiciones_mostradas = list(range(0, n_puntos, paso))
+            if posiciones_mostradas[-1] != n_puntos - 1:
+                posiciones_mostradas.append(n_puntos - 1)
+            ax.set_xticks(posiciones_mostradas)
+            ax.set_xticklabels([datos.index[i] for i in posiciones_mostradas], rotation=40, ha="right", fontsize=8)
+        else:
+            ax.set_xticks(list(x_pos))
+            ax.set_xticklabels(datos.index, rotation=30, ha="right")
+
         ax.set_ylabel(columna_y or "conteo")
         ax.margins(y=0.2)
     elif tipo == "histograma":
@@ -704,8 +768,8 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
             if len(valores):
                 mediana = valores.median()
                 ax.annotate(
-                    f"{mediana:,.1f}", (i + 0.28, mediana),
-                    fontsize=8, color=COLOR_TEXTO, fontweight="bold",
+                    _formato_compacto(mediana), (i + 0.28, mediana),
+                    fontsize=fuente_etiquetas, color=COLOR_TEXTO, fontweight="bold",
                     ha="left", va="center", path_effects=_contorno_legible(),
                 )
 
