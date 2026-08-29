@@ -120,27 +120,47 @@ def nuevo_estado():
 
 # 1. Carga de datos
 
-def cargar_csv(estado, ruta):
-    # Carga un archivo CSV dentro de estado["df"]. Devuelve un mensaje de
-    # exito. Lanza FileNotFoundError o ValueError con mensajes claros si
-    # algo sale mal (requerimiento del informe: "archivos que no puedan
-    # ser cargados correctamente").
+# Extensiones aceptadas y, para cada una, que funcion de pandas usar para
+# leerla. Vive como diccionario a nivel de modulo (no si/elif sueltos)
+# para que agregar un formato nuevo en el futuro (ej. .json) sea una sola
+# linea aca, sin tocar el resto de cargar_archivo.
+LECTORES_POR_EXTENSION = {
+    ".csv": pd.read_csv,
+    ".xlsx": pd.read_excel,
+    ".xls": pd.read_excel,
+}
+
+
+def cargar_archivo(estado, ruta):
+    # Carga un archivo CSV o Excel (.xlsx/.xls) dentro de estado["df"].
+    # Devuelve un mensaje de exito. Lanza FileNotFoundError o ValueError
+    # con mensajes claros si algo sale mal (requerimiento del informe:
+    # "archivos que no puedan ser cargados correctamente").
     if not ruta:
         raise ValueError("Debe indicar una ruta de archivo.")
     if not os.path.isfile(ruta):
         raise FileNotFoundError(f"No se encontro el archivo: {ruta}")
-    if not ruta.lower().endswith(".csv"):
-        raise ValueError("El archivo debe tener extension .csv")
+
+    extension = os.path.splitext(ruta)[1].lower()
+    lector = LECTORES_POR_EXTENSION.get(extension)
+    if lector is None:
+        extensiones_validas = ", ".join(sorted(LECTORES_POR_EXTENSION))
+        raise ValueError(f"Extension no soportada: '{extension}'. Use una de: {extensiones_validas}")
 
     try:
-        df = pd.read_csv(ruta)
+        # read_excel necesita openpyxl instalado para .xlsx (ya viene en
+        # requirements.txt); si el archivo esta corrupto o no es un Excel
+        # real, levanta ValueError igual que pandas para CSV invalidos.
+        df = lector(ruta)
     except pd.errors.EmptyDataError:
-        raise ValueError("El archivo CSV esta vacio.")
+        raise ValueError("El archivo esta vacio.")
     except pd.errors.ParserError as e:
-        raise ValueError(f"El archivo CSV tiene un formato invalido: {e}")
+        raise ValueError(f"El archivo tiene un formato invalido: {e}")
+    except ValueError as e:
+        raise ValueError(f"No se pudo leer el archivo: {e}")
 
     if df.empty:
-        raise ValueError("El archivo CSV no contiene registros.")
+        raise ValueError("El archivo no contiene registros.")
 
     if "cantidad" in df.columns and "precio_unitario" in df.columns:
         df["total_venta"] = df["cantidad"] * df["precio_unitario"]
@@ -149,6 +169,13 @@ def cargar_csv(estado, ruta):
     estado["ruta_actual"] = ruta
     estado["registros_ingresados"] = []
     return f"Archivo cargado correctamente: {os.path.basename(ruta)} ({df.shape[0]} filas, {df.shape[1]} columnas)"
+
+
+def cargar_csv(estado, ruta):
+    # Se conserva el nombre original por compatibilidad con codigo que ya
+    # llamaba cargar_csv (y porque el dataset del curso es .csv), pero
+    # ahora es un alias de cargar_archivo: acepta CSV o Excel por igual.
+    return cargar_archivo(estado, ruta)
 
 
 def verificar_carga(estado):
@@ -429,6 +456,11 @@ TIPOS_GRAFICO = {
         "y": "ninguna",
         "descripcion": "Muestra proporciones de una columna categorica (pocas categorias).",
     },
+    "caja": {
+        "x": "categorica",
+        "y": "numerica",
+        "descripcion": "Compara la distribucion (mediana, rango, outliers) de una columna numerica por categoria.",
+    },
 }
 
 
@@ -636,6 +668,51 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None):
             fontsize=8.5, frameon=False, labelcolor=COLOR_TEXTO,
         )
         ax.axis("equal")
+    elif tipo == "caja":
+        # Une valores y grupos por categoria, en el orden que matplotlib
+        # necesita para boxplot: una lista de arrays, uno por categoria.
+        categorias = sorted(df[columna_x].dropna().unique(), key=str)
+        if len(categorias) > 12:
+            raise ValueError(
+                f"'{columna_x}' tiene {len(categorias)} categorias distintas, "
+                "demasiadas para un grafico de caja legible. Filtra los datos primero."
+            )
+        grupos = [df.loc[df[columna_x] == cat, columna_y].dropna() for cat in categorias]
+
+        caja = ax.boxplot(
+            grupos, patch_artist=True, widths=0.5,
+            medianprops={"color": COLOR_TEXTO, "linewidth": 2},
+            whiskerprops={"color": COLOR_TEXTO, "linewidth": 1.2},
+            capprops={"color": COLOR_TEXTO, "linewidth": 1.2},
+            flierprops={
+                "marker": "o", "markersize": 5, "markerfacecolor": PALETA[4],
+                "markeredgecolor": COLOR_FONDO, "alpha": 0.8,
+            },
+            zorder=3,
+        )
+        colores = [PALETA[i % len(PALETA)] for i in range(len(categorias))]
+        for caja_individual, color in zip(caja["boxes"], colores):
+            caja_individual.set_facecolor(color)
+            caja_individual.set_edgecolor(COLOR_FONDO)
+            caja_individual.set_linewidth(1.4)
+            caja_individual.set_alpha(0.9)
+
+        # La mediana de cada caja se etiqueta arriba a la derecha de la
+        # caja (no encima de la linea, para no tapar el trazo) con
+        # contorno legible, igual que en el resto de los graficos.
+        for i, valores in enumerate(grupos, start=1):
+            if len(valores):
+                mediana = valores.median()
+                ax.annotate(
+                    f"{mediana:,.1f}", (i + 0.28, mediana),
+                    fontsize=8, color=COLOR_TEXTO, fontweight="bold",
+                    ha="left", va="center", path_effects=_contorno_legible(),
+                )
+
+        ax.set_xticks(range(1, len(categorias) + 1))
+        ax.set_xticklabels(categorias, rotation=30, ha="right")
+        ax.set_ylabel(columna_y)
+        ax.margins(y=0.15)
 
     if tipo != "pastel":
         _aplicar_estilo_base(fig, ax, titulo)
