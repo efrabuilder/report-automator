@@ -50,7 +50,7 @@ def menu_principal():
             if estado["df"] is not None else "sin archivo cargado"
         ))
         print("=" * 55)
-        print(" 1. Cargar archivo CSV")
+        print(" 1. Cargar archivo CSV o Excel")
         print(" 2. Mostrar informacion del conjunto de datos")
         print(" 3. Mostrar primeras y ultimas filas")
         print(" 4. Analizar tipos de datos")
@@ -126,8 +126,12 @@ def opcion_cargar_csv():
         raiz.withdraw()
         raiz.attributes("-topmost", True)
         ruta = filedialog.askopenfilename(
-            title="Seleccionar archivo CSV",
-            filetypes=[("Archivos CSV", "*.csv")],
+            title="Seleccionar archivo CSV o Excel",
+            filetypes=[
+                ("Archivos CSV y Excel", "*.csv *.xlsx *.xls"),
+                ("Archivos CSV", "*.csv"),
+                ("Archivos Excel", "*.xlsx *.xls"),
+            ],
         )
         raiz.destroy()
     except Exception:
@@ -135,9 +139,9 @@ def opcion_cargar_csv():
               "se pedira la ruta manualmente)")
 
     if not ruta:
-        ruta = input("Ingrese la ruta del archivo CSV: ").strip()
+        ruta = input("Ingrese la ruta del archivo CSV o Excel: ").strip()
 
-    print(analisis.cargar_csv(estado, ruta))
+    print(analisis.cargar_archivo(estado, ruta))
 
 
 def opcion_info_general():
