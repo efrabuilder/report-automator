@@ -46,7 +46,7 @@ def crear_barra_superior():
     barra = tk.Frame(ventana, bg="#2c3e50", height=50)
     barra.pack(side="top", fill="x")
 
-    tk.Button(barra, text="Cargar archivo CSV", command=accion_cargar_csv,
+    tk.Button(barra, text="Cargar archivo CSV/Excel", command=accion_cargar_csv,
               bg="#2980b9", fg="white", relief="flat", padx=12, pady=6
               ).pack(side="left", padx=10, pady=8)
 
@@ -183,11 +183,15 @@ def pedir_valor(titulo, etiquetas):
 # Acciones - barra superior
 
 def accion_cargar_csv():
-    ruta = filedialog.askopenfilename(filetypes=[("Archivos CSV", "*.csv")])
+    ruta = filedialog.askopenfilename(filetypes=[
+        ("Archivos CSV y Excel", "*.csv *.xlsx *.xls"),
+        ("Archivos CSV", "*.csv"),
+        ("Archivos Excel", "*.xlsx *.xls"),
+    ])
     if not ruta:
         return
     try:
-        mensaje = analisis.cargar_csv(estado, ruta)
+        mensaje = analisis.cargar_archivo(estado, ruta)
         actualizar_estado()
         mostrar_texto(mensaje)
     except Exception as e:
