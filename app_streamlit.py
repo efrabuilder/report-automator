@@ -34,15 +34,38 @@ if archivo is not None:
     ruta_temporal = os.path.join(tempfile.gettempdir(), archivo.name)
     with open(ruta_temporal, "wb") as f:
         f.write(archivo.getbuffer())
-    if estado["ruta_actual"] != ruta_temporal:
+
+    extension = os.path.splitext(ruta_temporal)[1].lower()
+
+    # Si es un Excel con varias hojas, se muestra un selector ANTES de
+    # cargar los datos, para que el usuario elija cual hoja analizar
+    # (Streamlit vuelve a ejecutar el script completo en cada seleccion,
+    # asi que este bloque se repite hasta que "hoja_elegida" quede fija).
+    hoja_elegida = None
+    if extension in analisis.EXTENSIONES_EXCEL:
         try:
-            mensaje = analisis.cargar_archivo(estado, ruta_temporal)
+            hojas = analisis.listar_hojas_excel(ruta_temporal)
+        except Exception as e:
+            hojas = []
+            st.sidebar.error(str(e))
+        if len(hojas) > 1:
+            hoja_elegida = st.sidebar.selectbox("Elegir hoja a analizar", hojas)
+        elif hojas:
+            hoja_elegida = hojas[0]
+
+    archivo_nuevo = estado["ruta_actual"] != ruta_temporal
+    hoja_distinta = estado["hoja_actual"] != hoja_elegida
+    if archivo_nuevo or hoja_distinta:
+        try:
+            mensaje = analisis.cargar_archivo(estado, ruta_temporal, hoja=hoja_elegida)
+            estado["hoja_actual"] = hoja_elegida
             st.sidebar.success(mensaje)
         except Exception as e:
             st.sidebar.error(str(e))
 
 if estado["df"] is not None:
-    st.sidebar.info(f"Archivo: {archivo.name if archivo else estado['ruta_actual']}\n\n"
+    hoja_info = f" (hoja '{estado['hoja_actual']}')" if estado["hoja_actual"] else ""
+    st.sidebar.info(f"Archivo: {archivo.name if archivo else estado['ruta_actual']}{hoja_info}\n\n"
                      f"{estado['df'].shape[0]} filas, {estado['df'].shape[1]} columnas")
     if st.sidebar.button("Limpiar tabla (quitar espacios y duplicados)"):
         st.sidebar.success(analisis.limpiar_datos(estado))
