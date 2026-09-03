@@ -113,6 +113,7 @@ def nuevo_estado():
     return {
         "df": None,
         "ruta_actual": None,
+        "hoja_actual": None,
         "registros_ingresados": [],
     }
 
@@ -130,12 +131,46 @@ LECTORES_POR_EXTENSION = {
     ".xls": pd.read_excel,
 }
 
+EXTENSIONES_EXCEL = (".xlsx", ".xls")
 
-def cargar_archivo(estado, ruta):
+
+class SeleccionHojaRequerida(Exception):
+    # Se lanza cuando el archivo es un libro de Excel con mas de una hoja
+    # y todavia no se indico cual analizar. Cada interfaz (consola,
+    # Tkinter, Streamlit) atrapa esta excepcion por separado, le muestra
+    # la lista de "hojas" al usuario y vuelve a llamar a cargar_archivo
+    # pasando la hoja elegida.
+    def __init__(self, hojas):
+        self.hojas = hojas
+        super().__init__(
+            "El archivo tiene varias hojas, debe indicar cual desea analizar: "
+            + ", ".join(hojas)
+        )
+
+
+def listar_hojas_excel(ruta):
+    # Devuelve los nombres de las hojas de un libro de Excel sin cargar
+    # los datos todavia (solo abre el indice del libro).
+    try:
+        libro = pd.ExcelFile(ruta)
+    except ValueError as e:
+        raise ValueError(f"No se pudo leer el archivo: {e}")
+    hojas = libro.sheet_names
+    if not hojas:
+        raise ValueError("El archivo no contiene hojas con datos.")
+    return hojas
+
+
+def cargar_archivo(estado, ruta, hoja=None):
     # Carga un archivo CSV o Excel (.xlsx/.xls) dentro de estado["df"].
     # Devuelve un mensaje de exito. Lanza FileNotFoundError o ValueError
     # con mensajes claros si algo sale mal (requerimiento del informe:
     # "archivos que no puedan ser cargados correctamente").
+    #
+    # Para Excel, "hoja" indica el nombre de la hoja a analizar. Si el
+    # libro tiene mas de una hoja y no se indico "hoja", se lanza
+    # SeleccionHojaRequerida para que la interfaz le pregunte al usuario
+    # cual elegir antes de continuar.
     if not ruta:
         raise ValueError("Debe indicar una ruta de archivo.")
     if not os.path.isfile(ruta):
@@ -151,25 +186,21 @@ def cargar_archivo(estado, ruta):
         # read_excel necesita openpyxl instalado para .xlsx (ya viene en
         # requirements.txt); si el archivo esta corrupto o no es un Excel
         # real, levanta ValueError igual que pandas para CSV invalidos.
-        if extension in (".xlsx", ".xls"):
-            # Se leen TODAS las hojas del Excel y se concatenan en un solo
-            # DataFrame, agregando la columna "_hoja" al inicio con el
-            # nombre de la hoja de origen de cada fila.
-            hojas = pd.read_excel(ruta, sheet_name=None)
-            if not hojas:
-                raise ValueError("El archivo no contiene hojas con datos.")
-            marcos = []
-            for nombre_hoja, df_hoja in hojas.items():
-                df_hoja = df_hoja.copy()
-                df_hoja.insert(0, "_hoja", nombre_hoja)
-                marcos.append(df_hoja)
-            df = pd.concat(marcos, ignore_index=True, sort=False)
+        if extension in EXTENSIONES_EXCEL:
+            if hoja is None:
+                hojas = listar_hojas_excel(ruta)
+                if len(hojas) > 1:
+                    raise SeleccionHojaRequerida(hojas)
+                hoja = hojas[0]
+            df = pd.read_excel(ruta, sheet_name=hoja)
         else:
             df = lector(ruta)
     except pd.errors.EmptyDataError:
         raise ValueError("El archivo esta vacio.")
     except pd.errors.ParserError as e:
         raise ValueError(f"El archivo tiene un formato invalido: {e}")
+    except SeleccionHojaRequerida:
+        raise
     except ValueError as e:
         raise ValueError(f"No se pudo leer el archivo: {e}")
 
@@ -182,14 +213,16 @@ def cargar_archivo(estado, ruta):
     estado["df"] = df
     estado["ruta_actual"] = ruta
     estado["registros_ingresados"] = []
-    return f"Archivo cargado correctamente: {os.path.basename(ruta)} ({df.shape[0]} filas, {df.shape[1]} columnas)"
+    nombre_hoja = f", hoja '{hoja}'" if extension in EXTENSIONES_EXCEL else ""
+    return (f"Archivo cargado correctamente: {os.path.basename(ruta)}{nombre_hoja} "
+            f"({df.shape[0]} filas, {df.shape[1]} columnas)")
 
 
-def cargar_csv(estado, ruta):
+def cargar_csv(estado, ruta, hoja=None):
     # Se conserva el nombre original por compatibilidad con codigo que ya
     # llamaba cargar_csv (y porque el dataset del curso es .csv), pero
     # ahora es un alias de cargar_archivo: acepta CSV o Excel por igual.
-    return cargar_archivo(estado, ruta)
+    return cargar_archivo(estado, ruta, hoja=hoja)
 
 
 def verificar_carga(estado):
