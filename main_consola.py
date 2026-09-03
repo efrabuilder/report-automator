@@ -141,7 +141,21 @@ def opcion_cargar_csv():
     if not ruta:
         ruta = input("Ingrese la ruta del archivo CSV o Excel: ").strip()
 
-    print(analisis.cargar_archivo(estado, ruta))
+    try:
+        print(analisis.cargar_archivo(estado, ruta))
+    except analisis.SeleccionHojaRequerida as e:
+        hoja = pedir_hoja(e.hojas)
+        print(analisis.cargar_archivo(estado, ruta, hoja=hoja))
+
+
+def pedir_hoja(hojas):
+    # Muestra la lista de hojas del libro de Excel y pide un numero,
+    # con el mismo estilo de menu numerado que usa pedir_entero().
+    print("\nEl archivo tiene varias hojas, elija cual desea analizar:")
+    for indice, nombre in enumerate(hojas, start=1):
+        print(f" {indice}. {nombre}")
+    indice_elegido = pedir_entero("Seleccione una hoja: ", minimo=1, maximo=len(hojas))
+    return hojas[indice_elegido - 1]
 
 
 def opcion_info_general():
