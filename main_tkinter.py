@@ -179,6 +179,34 @@ def pedir_valor(titulo, etiquetas):
     return resultado["valores"]
 
 
+def pedir_hoja(hojas):
+    # Ventana emergente con una hoja por boton de radio, usada cuando el
+    # Excel cargado tiene mas de una hoja y hay que elegir cual analizar.
+    ventana_pedido = tk.Toplevel(ventana)
+    ventana_pedido.title("Elegir hoja del Excel")
+    ventana_pedido.geometry("320x" + str(80 + 30 * len(hojas)))
+
+    tk.Label(ventana_pedido, text="El archivo tiene varias hojas,\nelija cual desea analizar:"
+             ).pack(anchor="w", padx=10, pady=(10, 4))
+
+    seleccion = tk.StringVar(value=hojas[0])
+    for nombre in hojas:
+        tk.Radiobutton(ventana_pedido, text=nombre, variable=seleccion, value=nombre
+                        ).pack(anchor="w", padx=20)
+
+    resultado = {"hoja": None}
+
+    def confirmar():
+        resultado["hoja"] = seleccion.get()
+        ventana_pedido.destroy()
+
+    tk.Button(ventana_pedido, text="Aceptar", command=confirmar).pack(pady=10)
+    ventana_pedido.protocol("WM_DELETE_WINDOW", ventana_pedido.destroy)
+    ventana_pedido.grab_set()
+    ventana.wait_window(ventana_pedido)
+    return resultado["hoja"]
+
+
 
 # Acciones - barra superior
 
@@ -191,7 +219,13 @@ def accion_cargar_csv():
     if not ruta:
         return
     try:
-        mensaje = analisis.cargar_archivo(estado, ruta)
+        try:
+            mensaje = analisis.cargar_archivo(estado, ruta)
+        except analisis.SeleccionHojaRequerida as e:
+            hoja = pedir_hoja(e.hojas)
+            if hoja is None:
+                return
+            mensaje = analisis.cargar_archivo(estado, ruta, hoja=hoja)
         actualizar_estado()
         mostrar_texto(mensaje)
     except Exception as e:
