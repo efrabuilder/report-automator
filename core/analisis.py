@@ -151,7 +151,21 @@ def cargar_archivo(estado, ruta):
         # read_excel necesita openpyxl instalado para .xlsx (ya viene en
         # requirements.txt); si el archivo esta corrupto o no es un Excel
         # real, levanta ValueError igual que pandas para CSV invalidos.
-        df = lector(ruta)
+        if extension in (".xlsx", ".xls"):
+            # Se leen TODAS las hojas del Excel y se concatenan en un solo
+            # DataFrame, agregando la columna "_hoja" al inicio con el
+            # nombre de la hoja de origen de cada fila.
+            hojas = pd.read_excel(ruta, sheet_name=None)
+            if not hojas:
+                raise ValueError("El archivo no contiene hojas con datos.")
+            marcos = []
+            for nombre_hoja, df_hoja in hojas.items():
+                df_hoja = df_hoja.copy()
+                df_hoja.insert(0, "_hoja", nombre_hoja)
+                marcos.append(df_hoja)
+            df = pd.concat(marcos, ignore_index=True, sort=False)
+        else:
+            df = lector(ruta)
     except pd.errors.EmptyDataError:
         raise ValueError("El archivo esta vacio.")
     except pd.errors.ParserError as e:
