@@ -219,11 +219,22 @@ def opcion_agrupar():
 def opcion_graficos():
     print("\nTipos de grafico disponibles:")
     for nombre, info in analisis.TIPOS_GRAFICO.items():
-        print(f"  {nombre:<11} -> {info['descripcion']}")
+        print(f"  {nombre:<18} -> {info['descripcion']}")
 
     tipo = input("\nTipo de grafico: ").strip().lower()
     if tipo not in analisis.TIPOS_GRAFICO:
         print(f"Tipo no valido. Opciones: {list(analisis.TIPOS_GRAFICO)}")
+        return
+
+    if tipo == "matriz_correlacion":
+        # No usa X/Y: se pueden indicar columnas (separadas por coma) o ENTER
+        # para usar las numericas sugeridas (sin IDs ni codigos).
+        print(f"Columnas numericas: {analisis.columnas_numericas(estado)}")
+        texto = input("Columnas separadas por coma (ENTER = automatico): ").strip()
+        columnas = [c.strip() for c in texto.split(",") if c.strip()] or None
+        ruta_salida = "grafico_matriz_correlacion.png"
+        analisis.generar_grafico(estado, tipo, ruta_salida=ruta_salida, columnas=columnas)
+        print(f"Grafico guardado en: {ruta_salida}")
         return
 
     opciones_x = analisis.columnas_validas_para(estado, tipo, "x")
