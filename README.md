@@ -14,6 +14,7 @@
 - **Colores y estilo**: tema, fondo, degradado, texto, grilla, acento y paleta de 6 colores; ademas un selector de colores CSS por nombre con su tabla (HEX/RGB/HSL).
 - **Nuevos graficos**: barras horizontales, area, violin y Pareto. Descarga en PNG.
 - **Mas graficos**: barras de frecuencia (una columna), boxplot de una sola variable y matriz de correlacion.
+- **Filtro en graficos**: campo opcional con una condicion (ej. `age >= 40 and insurance_type == 'life'`) que afecta solo al grafico, sin modificar los datos.
 - **Columnas calculadas**: formulas como `cantidad * precio_unitario * 0.13`.
 - **KPIs**: tarjetas con suma, promedio, mediana, minimo, maximo, conteo o valores unicos, con filtro opcional.
 
@@ -38,11 +39,6 @@ pip install streamlit
 streamlit run app_streamlit.py
 ```
 
-## Dependencias
-
-```
-pip install pandas matplotlib streamlit
-```
 ## Dependencias
 
 ```
