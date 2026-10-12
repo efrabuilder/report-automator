@@ -232,8 +232,9 @@ def opcion_graficos():
         print(f"Columnas numericas: {analisis.columnas_numericas(estado)}")
         texto = input("Columnas separadas por coma (ENTER = automatico): ").strip()
         columnas = [c.strip() for c in texto.split(",") if c.strip()] or None
+        filtro = input("Filtro opcional (ej: age > 40, ENTER para omitir): ").strip() or None
         ruta_salida = "grafico_matriz_correlacion.png"
-        analisis.generar_grafico(estado, tipo, ruta_salida=ruta_salida, columnas=columnas)
+        analisis.generar_grafico(estado, tipo, ruta_salida=ruta_salida, columnas=columnas, filtro=filtro)
         print(f"Grafico guardado en: {ruta_salida}")
         return
 
@@ -249,8 +250,9 @@ def opcion_graficos():
         print(f"Columnas validas para Y{obligatoria}: {opciones_y}")
         columna_y = input("Columna Y: ").strip() or None
 
+    filtro = input("Filtro opcional (ej: age > 40, ENTER para omitir): ").strip() or None
     ruta_salida = f"grafico_{tipo}_{columna_x}.png"
-    analisis.generar_grafico(estado, tipo, columna_x, columna_y, ruta_salida=ruta_salida)
+    analisis.generar_grafico(estado, tipo, columna_x, columna_y, ruta_salida=ruta_salida, filtro=filtro)
     print(f"Grafico guardado en: {ruta_salida}")
 
 
