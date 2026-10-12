@@ -599,7 +599,31 @@ TIPOS_GRAFICO = {
         "y": "numerica_opcional",
         "descripcion": "Barras ordenadas + linea de porcentaje acumulado: muestra que pocas categorias explican la mayor parte del total.",
     },
+    "barras_frecuencia": {
+        "x": "cualquiera",
+        "y": "ninguna",
+        "descripcion": "Frecuencia de cada valor de UNA columna: cuantas veces aparece (y su porcentaje). Muestra los 20 valores mas frecuentes.",
+    },
+    "caja_simple": {
+        "x": "numerica",
+        "y": "ninguna",
+        "descripcion": "Boxplot de UNA sola columna numerica: mediana, cuartiles, rango y valores atipicos (outliers).",
+    },
+    "matriz_correlacion": {
+        "x": "ninguna",
+        "y": "ninguna",
+        "descripcion": "Mapa de calor con la correlacion de Pearson (-1 a 1) entre todas las columnas numericas. Rojo = suben juntas, azul = una sube y la otra baja.",
+    },
 }
+
+# Maximo de columnas que se dibujan por defecto en la matriz (si el usuario
+# no elige columnas). Con mas, las celdas quedan demasiado chicas para leerse.
+MAX_COLUMNAS_MATRIZ = 15
+
+# Palabras que, dentro del nombre de una columna (separado por "_"), indican
+# que es un identificador o un codigo y no una medida: calcular correlaciones
+# con ellas no tiene sentido aunque sean numericas (ej. postal_code).
+_PALABRAS_IDENTIFICADOR = {"id", "postal", "zip", "codigo", "code", "phone", "telefono"}
 
 
 def columnas_numericas(estado):
@@ -628,6 +652,102 @@ def columnas_validas_para(estado, tipo, eje):
     return list(estado["df"].columns)  # 'cualquiera'
 
 
+def columnas_para_correlacion(estado):
+    # Columnas numericas con sentido para correlacionar: se descartan las
+    # constantes (no tienen varianza, su correlacion da NaN) y las que por
+    # su nombre son identificadores/codigos (customer_id, postal_code...).
+    verificar_carga(estado)
+    df = estado["df"]
+    validas = []
+    for col in columnas_numericas(estado):
+        partes = set(str(col).lower().split("_"))
+        if partes & _PALABRAS_IDENTIFICADOR:
+            continue
+        if df[col].nunique(dropna=True) <= 1:
+            continue
+        validas.append(col)
+    return validas
+
+
+def matriz_correlacion(estado, columnas=None):
+    # Tabla de correlaciones de Pearson (valores de -1 a 1) entre todas las
+    # parejas de columnas numericas. Si no se indican columnas se usan las
+    # sugeridas por columnas_para_correlacion.
+    verificar_carga(estado)
+    df = estado["df"]
+    if not columnas:
+        columnas = columnas_para_correlacion(estado)
+    numericas = set(columnas_numericas(estado))
+    for c in columnas:
+        if c not in df.columns:
+            raise ValueError(f"La columna '{c}' no existe.")
+        if c not in numericas:
+            raise ValueError(
+                f"La correlacion requiere columnas numericas; '{c}' no lo es. "
+                f"Columnas numericas disponibles: {sorted(numericas)}"
+            )
+    if len(columnas) < 2:
+        raise ValueError("Se necesitan al menos 2 columnas numericas para la matriz de correlacion.")
+    return df[list(columnas)].corr()
+
+
+def _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida):
+    # Mapa de calor de la matriz de correlacion. Va aparte del resto de
+    # graficos porque no usa ejes X/Y de columnas ni la grilla/degradado
+    # de fondo (taparian las celdas).
+    nota = ""
+    if not columnas:
+        sugeridas = columnas_para_correlacion(estado)
+        if len(sugeridas) > MAX_COLUMNAS_MATRIZ:
+            nota = f" (primeras {MAX_COLUMNAS_MATRIZ} de {len(sugeridas)} columnas numericas)"
+            columnas = sugeridas[:MAX_COLUMNAS_MATRIZ]
+        else:
+            columnas = sugeridas
+    matriz = matriz_correlacion(estado, columnas)
+    n = len(matriz)
+
+    lado = max(6.5, min(16, n * 0.75))
+    fig, ax = plt.subplots(figsize=(lado + 1.5, lado))
+    fig.patch.set_facecolor(E["fondo"])
+    ax.set_facecolor(E["fondo"])
+
+    # Escala fija de -1 a 1 (azul = negativa, rojo = positiva) para que los
+    # colores signifiquen lo mismo sin importar los datos; las celdas NaN
+    # (columnas sin variacion) quedan en blanco.
+    cmap = plt.get_cmap("coolwarm").copy()
+    cmap.set_bad(E["fondo"])
+    img = ax.imshow(np.ma.masked_invalid(matriz.values), cmap=cmap, vmin=-1, vmax=1, aspect="auto")
+
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(matriz.columns, rotation=45, ha="right", fontsize=9 if n <= 15 else 7)
+    ax.set_yticklabels(matriz.index, fontsize=9 if n <= 15 else 7)
+    ax.tick_params(colors=E["texto"], length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Numero dentro de cada celda solo si caben (hasta 15 columnas).
+    if n <= 15:
+        for i in range(n):
+            for j in range(n):
+                v = matriz.values[i, j]
+                if np.isnan(v):
+                    continue
+                ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=8.5,
+                        color="white" if abs(v) > 0.6 else "#222222", fontweight="bold")
+
+    cbar = fig.colorbar(img, ax=ax, pad=0.02)
+    cbar.set_label("correlacion de Pearson", color=E["texto"])
+    cbar.ax.tick_params(colors=E["texto"], labelsize=8)
+    cbar.outline.set_visible(False)
+
+    _titulo_resaltado(ax, (titulo or "Matriz de correlacion") + nota, E)
+    fig.tight_layout()
+    if ruta_salida:
+        fig.savefig(ruta_salida, dpi=120)
+    return fig
+
+
 def _formato_compacto(valor):
     # Abrevia numeros grandes (82780554 -> "82.8M") para que las etiquetas
     # sobre cada barra ocupen mucho menos ancho horizontal. Antes se usaba
@@ -645,8 +765,8 @@ def _formato_compacto(valor):
     return f"{signo}{valor_abs:,.0f}"
 
 
-def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
-                    estilo=None, titulo=None):
+def generar_grafico(estado, tipo, columna_x=None, columna_y=None, ruta_salida=None,
+                    estilo=None, titulo=None, columnas=None):
     # tipo: 'barras', 'linea', 'histograma', 'dispersion', 'pastel', 'caja'
     # Devuelve la figura de matplotlib (para Tkinter/Streamlit) y opcionalmente
     # la guarda en disco (para el informe en Word).
@@ -659,6 +779,10 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
 
     if tipo not in TIPOS_GRAFICO:
         raise ValueError(f"Tipo de grafico no valido: '{tipo}'. Opciones: {list(TIPOS_GRAFICO)}")
+    if tipo == "matriz_correlacion":
+        # No usa columna X/Y: trabaja con varias columnas numericas a la vez
+        # ("columnas", o las sugeridas si no se indica nada).
+        return _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida)
     if columna_x not in df.columns:
         raise ValueError(f"La columna X '{columna_x}' no existe.")
     if columna_y and columna_y not in df.columns:
@@ -696,6 +820,8 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
     # un tope de 24" para que tampoco crezca sin limite con datasets con
     # cientos de categorias (ahi ya es mejor filtrar los datos primero).
     n_categorias = df[columna_x].nunique() if tipo in ("barras", "linea", "caja") else None
+    if tipo == "barras_frecuencia":
+        n_categorias = min(df[columna_x].nunique(), 20)  # se dibujan como maximo 20
     ancho_fig = 9 if not n_categorias else max(9, min(24, n_categorias * 0.9))
     # Con muchas categorias tambien se achica un poco la letra de las
     # cifras sobre cada barra, para que quepan sin solaparse incluso si
@@ -703,6 +829,7 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
     fuente_etiquetas = 9 if not n_categorias or n_categorias <= 10 else (8 if n_categorias <= 18 else 7)
 
     fig, ax = plt.subplots(figsize=(ancho_fig, 5.6))
+    titulo_dado = titulo  # lo que escribio el usuario (None si lo dejo vacio)
     titulo = titulo or (f"{tipo.replace('_', ' ').capitalize()}: {columna_x}" + (f" vs {columna_y}" if columna_y else ""))
 
     if tipo == "barras":
@@ -919,6 +1046,86 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
         ax.set_ylabel(columna_y)
         ax.margins(y=0.15)
 
+    elif tipo == "barras_frecuencia":
+        # Frecuencia de una sola columna: cuantas filas tiene cada valor.
+        frecuencias = df[columna_x].value_counts()
+        if frecuencias.empty:
+            raise ValueError(f"La columna '{columna_x}' no tiene datos (todo son nulos).")
+        total = frecuencias.sum()
+        nota = ""
+        if len(frecuencias) > 20:
+            nota = f" (20 mas frecuentes de {len(frecuencias)})"
+            frecuencias = frecuencias.head(20)
+        if pd.api.types.is_numeric_dtype(df[columna_x]):
+            frecuencias = frecuencias.sort_index()  # numeros: orden natural (1, 2, 3...)
+        posiciones = np.arange(len(frecuencias)) * 1.35
+        colores = CMAP(np.linspace(0.1, 0.95, len(frecuencias)))
+        barras = ax.bar(
+            posiciones, frecuencias.values, color=colores,
+            edgecolor=E["fondo"], linewidth=1.4, zorder=3, width=0.62,
+        )
+        ax.set_xticks(posiciones)
+        ax.set_xticklabels(frecuencias.index, rotation=30, ha="right")
+        # Etiqueta: conteo y porcentaje (con muchas barras solo el conteo, para que no se solapen)
+        for barra, valor in zip(barras, frecuencias.values):
+            texto = f"{valor:,}\n{valor / total * 100:.1f}%" if len(frecuencias) <= 10 else f"{valor:,}"
+            ax.annotate(
+                texto, (barra.get_x() + barra.get_width() / 2, valor),
+                textcoords="offset points", xytext=(0, 6), ha="center",
+                fontsize=fuente_etiquetas, color=E["texto"], fontweight="bold",
+                path_effects=_contorno_legible(E["fondo"]),
+            )
+        ax.set_xlabel(columna_x)
+        ax.set_ylabel("frecuencia")
+        ax.margins(y=0.25)
+        ax.set_xlim(posiciones[0] - 0.9, posiciones[-1] + 0.9)
+        titulo = titulo_dado or f"Frecuencia: {columna_x}{nota}"
+    elif tipo == "caja_simple":
+        # Boxplot horizontal de una sola columna numerica.
+        valores = df[columna_x].dropna()
+        if valores.empty:
+            raise ValueError(f"La columna '{columna_x}' no tiene datos (todo son nulos).")
+        q1, mediana, q3 = valores.quantile([0.25, 0.5, 0.75])
+        iqr = q3 - q1
+        atipicos = int(((valores < q1 - 1.5 * iqr) | (valores > q3 + 1.5 * iqr)).sum())  # regla 1.5 x IQR
+        # En matplotlib >= 3.10 "vert" esta obsoleto y se usa "orientation".
+        version_mpl = tuple(int(n) for n in matplotlib.__version__.split(".")[:2])
+        horizontal_kw = {"orientation": "horizontal"} if version_mpl >= (3, 10) else {"vert": False}
+        caja = ax.boxplot(
+            valores, patch_artist=True, widths=0.45, **horizontal_kw,
+            medianprops={"color": E["texto"], "linewidth": 2.2},
+            whiskerprops={"color": E["texto"], "linewidth": 1.2},
+            capprops={"color": E["texto"], "linewidth": 1.2},
+            flierprops={
+                "marker": "o", "markersize": 5, "markerfacecolor": E["paleta"][4],
+                "markeredgecolor": E["fondo"], "alpha": 0.7,
+            },
+            zorder=3,
+        )
+        caja["boxes"][0].set_facecolor(E["paleta"][2])
+        caja["boxes"][0].set_edgecolor(E["fondo"])
+        caja["boxes"][0].set_linewidth(1.4)
+        caja["boxes"][0].set_alpha(0.9)
+
+        def _fmt(v):  # numeros chicos con 2 decimales, grandes en formato compacto
+            return _formato_compacto(v) if abs(v) >= 1000 else f"{v:,.2f}"
+
+        # Eje Y fijo (la caja ocupa de 0.775 a 1.225) para ubicar las etiquetas en
+        # coordenadas de datos: mediana arriba de la caja, Q1 y Q3 debajo, a cada lado.
+        ax.set_ylim(0.4, 1.6)
+        borde = dict(path_effects=_contorno_legible(E["fondo"]), color=E["texto"])
+        ax.annotate(f"mediana: {_fmt(mediana)}", (mediana, 1.225), textcoords="offset points",
+                    xytext=(0, 6), ha="center", va="bottom", fontsize=9, fontweight="bold", **borde)
+        ax.annotate(f"Q1: {_fmt(q1)}", (q1, 0.775), textcoords="offset points",
+                    xytext=(-3, -6), ha="right", va="top", fontsize=8.5, **borde)
+        ax.annotate(f"Q3: {_fmt(q3)}", (q3, 0.775), textcoords="offset points",
+                    xytext=(3, -6), ha="left", va="top", fontsize=8.5, **borde)
+        ax.text(0.99, 0.95, f"n = {len(valores):,}  |  atipicos: {atipicos:,}", transform=ax.transAxes,
+                ha="right", va="top", fontsize=9, color=E["texto"], path_effects=_contorno_legible(E["fondo"]))
+        ax.set_yticks([])
+        ax.set_xlabel(columna_x)
+        ax.margins(x=0.05)
+        titulo = titulo_dado or f"Boxplot: {columna_x}"
     elif tipo == "barras_horizontales":
         datos = (df.groupby(columna_x)[columna_y].sum() if columna_y else df[columna_x].value_counts())
         datos = datos.sort_values(ascending=False).head(15).iloc[::-1]  # la mayor queda arriba
@@ -1002,7 +1209,7 @@ def generar_grafico(estado, tipo, columna_x, columna_y=None, ruta_salida=None,
         ax.set_facecolor(E["fondo"])
         _titulo_resaltado(ax, titulo, E)
     else:
-        _aplicar_estilo_base(fig, ax, titulo, E, horizontal=(tipo == "barras_horizontales"))
+        _aplicar_estilo_base(fig, ax, titulo, E, horizontal=(tipo in ("barras_horizontales", "caja_simple")))
 
     fig.tight_layout()
 
