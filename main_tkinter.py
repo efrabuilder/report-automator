@@ -416,10 +416,17 @@ def abrir_dialogo_grafico():
         info = analisis.TIPOS_GRAFICO[tipo]
         label_descripcion.config(text=info["descripcion"])
 
-        combo_x["values"] = analisis.columnas_validas_para(estado, tipo, "x")
-        combo_x.set("")
-        if combo_x["values"]:
-            combo_x.current(0)
+        if info["x"] == "ninguna":
+            # La matriz de correlacion no usa columna X: se deshabilita el combo.
+            combo_x["values"] = []
+            combo_x.set("(no aplica: usa todas las numericas)")
+            combo_x.config(state="disabled")
+        else:
+            combo_x.config(state="readonly")
+            combo_x["values"] = analisis.columnas_validas_para(estado, tipo, "x")
+            combo_x.set("")
+            if combo_x["values"]:
+                combo_x.current(0)
 
         if info["y"] == "ninguna":
             label_y.pack_forget()
@@ -440,7 +447,9 @@ def abrir_dialogo_grafico():
         tipo = combo_tipo.get()
         columna_x = combo_x.get()
         columna_y = combo_y.get() or None
-        if not columna_x:
+        if analisis.TIPOS_GRAFICO[tipo]["x"] == "ninguna":
+            columna_x = None
+        elif not columna_x:
             messagebox.showwarning("Aviso", "Debe seleccionar una columna X.")
             return
         try:
