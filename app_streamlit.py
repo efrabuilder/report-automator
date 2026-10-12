@@ -373,13 +373,20 @@ elif opcion == "Representaciones graficas":
             columna_y = col2.selectbox(etiqueta, opciones_mostradas)
 
         titulo_propio = st.text_input("Titulo del grafico (opcional)")
+        # Filtro opcional: solo afecta a este grafico, no a los datos cargados.
+        filtro_grafico = st.text_input(
+            "Filtro opcional (condicion)", key="filtro_grafico",
+            placeholder="claim_amount_eur > 0 and age >= 40",
+        )
+        st.caption("Ejemplos: `age >= 40`, `insurance_type == 'life'`, `claim_amount_eur > 0 and age < 30`. "
+                   "Para texto use comillas; para columnas con espacios use acentos graves: `precio unitario`.")
 
         # El grafico se redibuja solo al cambiar cualquier opcion o color
         # (ya no hace falta el boton "Generar").
         try:
             fig = analisis.generar_grafico(
                 estado, tipo, columna_x, columna_y, estilo=estilo, titulo=titulo_propio or None,
-                columnas=columnas_matriz,
+                columnas=columnas_matriz, filtro=filtro_grafico.strip() or None,
             )
             st.pyplot(fig)
             buffer = io.BytesIO()
