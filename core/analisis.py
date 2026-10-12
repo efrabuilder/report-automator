@@ -652,6 +652,32 @@ def columnas_validas_para(estado, tipo, eje):
     return list(estado["df"].columns)  # 'cualquiera'
 
 
+def filtrar_para_grafico(estado, filtro):
+    # Devuelve una COPIA del estado con el df ya filtrado por la condicion
+    # escrita por el usuario (ej. claim_amount_eur > 0 and age >= 40). El
+    # estado original no se toca: el filtro solo afecta al grafico.
+    verificar_carga(estado)
+    if not filtro or not filtro.strip():
+        return estado
+    _validar_formula(filtro)
+    try:
+        filtrado = estado["df"].query(filtro, engine="python")
+    except Exception as e:
+        raise ValueError(f"Filtro invalido: {e}")
+    if filtrado.empty:
+        raise ValueError("El filtro no dejo ninguna fila para graficar. Revise la condicion.")
+    return {**estado, "df": filtrado}
+
+
+def _nota_filtro(ax, E, n_filtradas, n_total):
+    # Texto chico arriba a la derecha que avisa que el grafico esta filtrado
+    # y con cuantas filas se hizo.
+    ax.text(
+        1.0, 1.06, f"filtrado: {n_filtradas:,} de {n_total:,} filas", transform=ax.transAxes,
+        fontsize=9, color=E["texto"], ha="right", va="bottom", style="italic",
+    )
+
+
 def columnas_para_correlacion(estado):
     # Columnas numericas con sentido para correlacionar: se descartan las
     # constantes (no tienen varianza, su correlacion da NaN) y las que por
@@ -691,7 +717,7 @@ def matriz_correlacion(estado, columnas=None):
     return df[list(columnas)].corr()
 
 
-def _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida):
+def _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida, nota_filas=None):
     # Mapa de calor de la matriz de correlacion. Va aparte del resto de
     # graficos porque no usa ejes X/Y de columnas ni la grilla/degradado
     # de fondo (taparian las celdas).
@@ -742,6 +768,8 @@ def _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida):
     cbar.outline.set_visible(False)
 
     _titulo_resaltado(ax, (titulo or "Matriz de correlacion") + nota, E)
+    if nota_filas:
+        _nota_filtro(ax, E, *nota_filas)
     fig.tight_layout()
     if ruta_salida:
         fig.savefig(ruta_salida, dpi=120)
@@ -766,14 +794,19 @@ def _formato_compacto(valor):
 
 
 def generar_grafico(estado, tipo, columna_x=None, columna_y=None, ruta_salida=None,
-                    estilo=None, titulo=None, columnas=None):
+                    estilo=None, titulo=None, columnas=None, filtro=None):
     # tipo: 'barras', 'linea', 'histograma', 'dispersion', 'pastel', 'caja'
     # Devuelve la figura de matplotlib (para Tkinter/Streamlit) y opcionalmente
     # la guarda en disco (para el informe en Word).
     # Valida con mensajes claros ANTES de graficar, para nunca dejar pasar
     # errores crudos de matplotlib como "no numeric data to plot".
     verificar_carga(estado)
+    total_filas = len(estado["df"])
+    # Si hay filtro, el resto de la funcion trabaja sobre una copia filtrada
+    # (el dataset original queda intacto).
+    estado = filtrar_para_grafico(estado, filtro)
     df = estado["df"]
+    nota_filas = (len(df), total_filas) if (filtro and filtro.strip()) else None
     E = resolver_estilo(estilo)          # colores elegidos (o los de por defecto)
     CMAP = cmap_desde_estilo(E)
 
@@ -782,7 +815,7 @@ def generar_grafico(estado, tipo, columna_x=None, columna_y=None, ruta_salida=No
     if tipo == "matriz_correlacion":
         # No usa columna X/Y: trabaja con varias columnas numericas a la vez
         # ("columnas", o las sugeridas si no se indica nada).
-        return _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida)
+        return _grafico_matriz_correlacion(estado, E, columnas, titulo, ruta_salida, nota_filas)
     if columna_x not in df.columns:
         raise ValueError(f"La columna X '{columna_x}' no existe.")
     if columna_y and columna_y not in df.columns:
@@ -1210,6 +1243,9 @@ def generar_grafico(estado, tipo, columna_x=None, columna_y=None, ruta_salida=No
         _titulo_resaltado(ax, titulo, E)
     else:
         _aplicar_estilo_base(fig, ax, titulo, E, horizontal=(tipo in ("barras_horizontales", "caja_simple")))
+
+    if nota_filas:
+        _nota_filtro(ax, E, *nota_filas)
 
     fig.tight_layout()
 
