@@ -391,7 +391,7 @@ def abrir_dialogo_grafico():
     # histograma sobre una columna de texto, etc.).
     ventana_grafico = tk.Toplevel(ventana)
     ventana_grafico.title("Generar grafico")
-    ventana_grafico.geometry("380x320")
+    ventana_grafico.geometry("380x400")
     ventana_grafico.grab_set()
 
     tipos = list(analisis.TIPOS_GRAFICO.keys())
@@ -453,14 +453,21 @@ def abrir_dialogo_grafico():
             messagebox.showwarning("Aviso", "Debe seleccionar una columna X.")
             return
         try:
-            fig = analisis.generar_grafico(estado, tipo, columna_x, columna_y)
+            filtro = entrada_filtro.get().strip() or None  # condicion opcional (ej. age > 40)
+            fig = analisis.generar_grafico(estado, tipo, columna_x, columna_y, filtro=filtro)
             ventana_grafico.destroy()
             mostrar_grafico(fig)
         except Exception as e:
             manejar_error(e)
 
+    # Boton, entrada y etiqueta se empaquetan desde ABAJO (side="bottom") para que
+    # siempre queden al final aunque los campos de arriba cambien de tamano.
     tk.Button(ventana_grafico, text="Generar", command=generar, bg="#2980b9", fg="white"
-              ).pack(pady=15)
+              ).pack(side="bottom", pady=15)
+    entrada_filtro = tk.Entry(ventana_grafico)  # filtro opcional del grafico
+    entrada_filtro.pack(side="bottom", fill="x", padx=10)
+    tk.Label(ventana_grafico, text="Filtro opcional (ej: age > 40 and gender == 'M'):"
+             ).pack(side="bottom", anchor="w", padx=10)
 
 
 def accion_inconsistencias():
