@@ -340,16 +340,29 @@ elif opcion == "Representaciones graficas":
         st.caption(analisis.TIPOS_GRAFICO[tipo]["descripcion"])
 
         col1, col2 = st.columns(2)
-        opciones_x = analisis.columnas_validas_para(estado, tipo, "x")
-        # Para pastel/caja/violin se sugiere primero una columna con pocas
-        # categorias (<= 12), porque con mas el grafico no es legible.
-        indice_x = 0
-        if tipo in ("pastel", "caja", "violin"):
-            for i, nombre_col in enumerate(opciones_x):
-                if estado["df"][nombre_col].nunique() <= 12:
-                    indice_x = i
-                    break
-        columna_x = col1.selectbox("Columna X", opciones_x, index=indice_x, key=f"col_x_{tipo}")
+        columna_x = None
+        columnas_matriz = None
+        if tipo == "matriz_correlacion":
+            # La matriz no usa X/Y: se eligen las columnas numericas a comparar.
+            # Por defecto se sugieren hasta 12 (sin IDs ni codigos postales).
+            sugeridas = analisis.columnas_para_correlacion(estado)
+            columnas_matriz = st.multiselect(
+                "Columnas a incluir (minimo 2)", analisis.columnas_numericas(estado),
+                default=sugeridas[:12], key="cols_matriz",
+            )
+            st.caption("Valores de -1 a 1: cerca de 1 suben juntas, cerca de -1 una sube y la otra baja, "
+                       "cerca de 0 no hay relacion lineal. Se excluyeron por defecto IDs y codigos.")
+        else:
+            opciones_x = analisis.columnas_validas_para(estado, tipo, "x")
+            # Para pastel/caja/violin se sugiere primero una columna con pocas
+            # categorias (<= 12), porque con mas el grafico no es legible.
+            indice_x = 0
+            if tipo in ("pastel", "caja", "violin", "barras_frecuencia"):
+                for i, nombre_col in enumerate(opciones_x):
+                    if estado["df"][nombre_col].nunique() <= 12:
+                        indice_x = i
+                        break
+            columna_x = col1.selectbox("Columna X", opciones_x, index=indice_x, key=f"col_x_{tipo}")
 
         requisito_y = analisis.TIPOS_GRAFICO[tipo]["y"]
         columna_y = None
@@ -365,7 +378,8 @@ elif opcion == "Representaciones graficas":
         # (ya no hace falta el boton "Generar").
         try:
             fig = analisis.generar_grafico(
-                estado, tipo, columna_x, columna_y, estilo=estilo, titulo=titulo_propio or None
+                estado, tipo, columna_x, columna_y, estilo=estilo, titulo=titulo_propio or None,
+                columnas=columnas_matriz,
             )
             st.pyplot(fig)
             buffer = io.BytesIO()
